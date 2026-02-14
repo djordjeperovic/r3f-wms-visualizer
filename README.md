@@ -3,6 +3,10 @@
 Interactive 3D warehouse management visualization built with React, TypeScript, and react-three-fiber.
 The app renders warehouse locations as instanced boxes and lets you inspect per-location details directly in the scene.
 
+## Live app
+
+- GitHub Pages: [https://djordjeperovic.github.io/r3f-wms-visualizer/](https://djordjeperovic.github.io/r3f-wms-visualizer/)
+
 ## Features
 
 - 550 generated locations (`10 rows x 11 columns x 5 levels`)
@@ -42,6 +46,11 @@ Then open `http://localhost:5173`.
 | `npm run build` | Type-check and create production build |
 | `npm run lint` | Run ESLint across the repository |
 | `npm run preview` | Preview the production build locally |
+
+## Deployment
+
+- GitHub Pages deployment workflow: `.github/workflows/deploy-pages.yml`
+- Triggered automatically on push to `main` and manually via `workflow_dispatch`
 
 ## Interaction controls
 
