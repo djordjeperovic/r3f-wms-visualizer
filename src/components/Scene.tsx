@@ -1,85 +1,208 @@
-import { useRef, useEffect } from 'react'
-import { OrbitControls, Environment, Grid, ContactShadows } from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
+import { useCallback, useEffect, useRef } from 'react'
+import { OrbitControls, Environment, Grid, ContactShadows, Line, Stats } from '@react-three/drei'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { EffectComposer, SSAO, Bloom } from '@react-three/postprocessing'
+import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { WarehouseInstances } from './WarehouseInstances'
-import { useWarehouseData } from '../hooks/useWarehouseData'
-import type { WarehouseItem } from '../types/warehouse'
+import { RowLabels } from './RowLabels'
+import { LevelIndicators } from './LevelIndicators'
+import { RackStructure } from './RackStructure'
+import { AisleMarkings } from './AisleMarkings'
+import type { ThemeConfig } from '../hooks/useTheme'
+import type {
+  CameraView,
+  ContextMenuState,
+  ShadowQuality,
+  StatusFilter,
+  VizMode,
+  WarehouseData,
+  WarehouseItem,
+  WarehouseLayout,
+} from '../types/warehouse'
+import type { Dispatch, SetStateAction } from 'react'
 
-interface SceneProps {
-  showEmpty: boolean
-  selectedItem: WarehouseItem | null
-  onSelect: (item: WarehouseItem | null) => void
-  resetCameraTrigger: number
+const DEFAULT_CAMERA_VIEW: CameraView = {
+  position: [30, 25, 30],
+  target: [0, 4, 0],
 }
 
-const DEFAULT_CAMERA_POSITION: [number, number, number] = [30, 25, 30]
-const DEFAULT_CAMERA_TARGET: [number, number, number] = [10, 0, 10]
+interface SceneProps {
+  data: WarehouseData
+  layout: WarehouseLayout
+  showEmpty: boolean
+  statusFilter: StatusFilter
+  selectedItems: WarehouseItem[]
+  onSelectItems: Dispatch<SetStateAction<WarehouseItem[]>>
+  searchQuery: string
+  vizMode: VizMode
+  shadowQuality: ShadowQuality
+  onContextMenu: (state: ContextMenuState) => void
+  cameraCommand: CameraView | null
+  cameraCommandId: number
+  initialCameraView: CameraView | null
+  onCameraChange: (view: CameraView) => void
+  onFirstFrame: () => void
+  themeConfig: ThemeConfig
+  showPerfOverlay: boolean
+}
 
-function SceneContent({ showEmpty, selectedItem, onSelect, resetCameraTrigger }: SceneProps) {
-  const { occupied, empty } = useWarehouseData()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const controlsRef = useRef<any>(null)
+interface SceneContentProps extends SceneProps {
+  initialTarget: [number, number, number]
+}
+
+function toTuple(vector: THREE.Vector3): [number, number, number] {
+  return [vector.x, vector.y, vector.z]
+}
+
+function FirstFrameNotifier({ onFirstFrame }: { onFirstFrame: () => void }) {
+  const hasNotifiedRef = useRef(false)
+
+  useFrame(() => {
+    if (hasNotifiedRef.current) return
+    hasNotifiedRef.current = true
+    onFirstFrame()
+  })
+
+  return null
+}
+
+function SceneContent({
+  data,
+  layout,
+  showEmpty,
+  statusFilter,
+  selectedItems,
+  onSelectItems,
+  searchQuery,
+  vizMode,
+  shadowQuality,
+  onContextMenu,
+  cameraCommand,
+  cameraCommandId,
+  initialTarget,
+  onCameraChange,
+  onFirstFrame,
+  themeConfig,
+  showPerfOverlay,
+}: SceneContentProps) {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const desiredPositionRef = useRef<THREE.Vector3 | null>(null)
+  const desiredTargetRef = useRef<THREE.Vector3 | null>(null)
+
+  const shadowEnabled = shadowQuality !== 'off'
+  const shadowMapSize = shadowQuality === 'high' ? 2048 : 512
+
+  const emitCameraChange = useCallback(() => {
+    const controls = controlsRef.current
+    if (!controls) return
+
+    onCameraChange({
+      position: toTuple(controls.object.position),
+      target: toTuple(controls.target),
+    })
+  }, [onCameraChange])
 
   useEffect(() => {
-    if (!controlsRef.current) return
+    const controls = controlsRef.current
+    if (!controls) return
 
-    controlsRef.current.target.set(...DEFAULT_CAMERA_TARGET)
-    controlsRef.current.target0.set(...DEFAULT_CAMERA_TARGET)
-    controlsRef.current.update()
-    controlsRef.current.saveState()
-  }, [])
+    controls.target.set(...initialTarget)
+    controls.target0.set(...initialTarget)
+    controls.update()
+    controls.saveState()
+    emitCameraChange()
+  }, [initialTarget, emitCameraChange])
 
   useEffect(() => {
-    if (!controlsRef.current) return
+    if (!cameraCommand) return
 
-    controlsRef.current.target0.set(...DEFAULT_CAMERA_TARGET)
-    controlsRef.current.reset()
-  }, [resetCameraTrigger])
+    desiredPositionRef.current = new THREE.Vector3(...cameraCommand.position)
+    desiredTargetRef.current = new THREE.Vector3(...cameraCommand.target)
+  }, [cameraCommand, cameraCommandId])
+
+  useFrame(() => {
+    const controls = controlsRef.current
+    const desiredPosition = desiredPositionRef.current
+    const desiredTarget = desiredTargetRef.current
+
+    if (!controls || !desiredPosition || !desiredTarget) return
+
+    controls.object.position.lerp(desiredPosition, 0.08)
+    controls.target.lerp(desiredTarget, 0.08)
+    controls.update()
+
+    const reachedPosition = controls.object.position.distanceTo(desiredPosition) < 0.05
+    const reachedTarget = controls.target.distanceTo(desiredTarget) < 0.05
+    if (!reachedPosition || !reachedTarget) return
+
+    controls.object.position.copy(desiredPosition)
+    controls.target.copy(desiredTarget)
+    controls.update()
+
+    desiredPositionRef.current = null
+    desiredTargetRef.current = null
+    emitCameraChange()
+  })
 
   return (
     <>
+      <fog attach="fog" args={[themeConfig.fogColor, 45, 130]} />
       <Environment preset="city" />
-      
-      {/* Main Light */}
+
       <directionalLight
         position={[20, 30, 10]}
         intensity={2}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        castShadow={shadowEnabled}
+        shadow-mapSize-width={shadowMapSize}
+        shadow-mapSize-height={shadowMapSize}
         shadow-bias={-0.0001}
       >
         <orthographicCamera attach="shadow-camera" args={[-40, 40, 40, -40]} />
       </directionalLight>
 
-      {/* Floor & Shadows */}
+      <AisleMarkings layout={layout} color={themeConfig.aisleColor} />
+      <RackStructure layout={layout} color={themeConfig.rackColor} />
+      <RowLabels layout={layout} color={themeConfig.labelColor} />
+      <LevelIndicators layout={layout} color={themeConfig.labelColor} />
+
       <Grid
         renderOrder={-1}
         position={[0, -0.01, 0]}
         infiniteGrid
         cellSize={1}
         sectionSize={5}
-        fadeDistance={60}
-        sectionColor="#4a5568"
-        cellColor="#2d3748"
-      />
-      <ContactShadows 
-        position={[0, 0, 0]} 
-        opacity={0.6} 
-        scale={60} 
-        blur={2} 
-        far={4.5} 
-        resolution={256} 
-        color="#000000" 
+        fadeDistance={70}
+        sectionColor={themeConfig.gridSection}
+        cellColor={themeConfig.gridCell}
       />
 
-      <WarehouseInstances 
-        occupied={occupied} 
-        empty={empty} 
+      {shadowEnabled && (
+        <ContactShadows
+          position={[0, 0, 0]}
+          opacity={0.45}
+          scale={65}
+          blur={2}
+          far={5}
+          resolution={256}
+          color="#000000"
+        />
+      )}
+
+      <Line points={[[0, 0.04, 0], [5, 0.04, 0]]} color={themeConfig.axisX} lineWidth={2} />
+      <Line points={[[0, 0.04, 0], [0, 0.04, 5]]} color={themeConfig.axisZ} lineWidth={2} />
+
+      <WarehouseInstances
+        occupied={data.occupied}
+        empty={data.empty}
         showEmpty={showEmpty}
-        selectedItem={selectedItem}
-        onSelect={onSelect}
+        statusFilter={statusFilter}
+        selectedItems={selectedItems}
+        onSelectItems={onSelectItems}
+        searchQuery={searchQuery}
+        vizMode={vizMode}
+        onContextMenu={onContextMenu}
+        themeConfig={themeConfig}
       />
 
       <OrbitControls
@@ -88,37 +211,83 @@ function SceneContent({ showEmpty, selectedItem, onSelect, resetCameraTrigger }:
         enableDamping
         dampingFactor={0.08}
         minDistance={5}
-        maxDistance={80}
-        maxPolarAngle={Math.PI / 2.05}
-        target={DEFAULT_CAMERA_TARGET}
+        maxDistance={95}
+        maxPolarAngle={Math.PI / 2.03}
+        target={initialTarget}
+        onEnd={emitCameraChange}
+        touches={{
+          ONE: THREE.TOUCH.ROTATE,
+          TWO: THREE.TOUCH.DOLLY_PAN,
+        }}
       />
 
       <EffectComposer enableNormalPass>
-        <SSAO 
-          radius={0.4} 
-          intensity={50} 
-          luminanceInfluence={0.4} 
-        />
-        <Bloom 
-          luminanceThreshold={1} 
-          mipmapBlur 
-          intensity={0.5} 
-          radius={0.4} 
-        />
+        <SSAO radius={0.4} intensity={50} luminanceInfluence={0.4} />
+        <Bloom luminanceThreshold={1} mipmapBlur intensity={0.5} radius={0.4} />
       </EffectComposer>
+
+      {showPerfOverlay && <Stats className="!absolute !left-auto !right-4 !top-4" />}
+      <FirstFrameNotifier onFirstFrame={onFirstFrame} />
     </>
   )
 }
 
-export function Scene(props: SceneProps) {
+export function Scene({
+  data,
+  layout,
+  showEmpty,
+  statusFilter,
+  selectedItems,
+  onSelectItems,
+  searchQuery,
+  vizMode,
+  shadowQuality,
+  onContextMenu,
+  cameraCommand,
+  cameraCommandId,
+  initialCameraView,
+  onCameraChange,
+  onFirstFrame,
+  themeConfig,
+  showPerfOverlay,
+}: SceneProps) {
+  const cameraView = initialCameraView ?? DEFAULT_CAMERA_VIEW
+
   return (
     <Canvas
       shadows="soft"
-      camera={{ position: DEFAULT_CAMERA_POSITION, fov: 45, near: 0.1, far: 200 }}
-      style={{ width: '100vw', height: '100vh', background: '#111827' }} // dark gray bg
-      gl={{ antialias: false, stencil: false, alpha: false }} // Post-processing perf optimization
+      camera={{ position: cameraView.position, fov: 45, near: 0.1, far: 220 }}
+      style={{ width: '100vw', height: '100vh', background: themeConfig.canvasBg }}
+      gl={{
+        antialias: false,
+        stencil: false,
+        alpha: false,
+        precision: 'highp',
+        preserveDrawingBuffer: true,
+      }}
+      onPointerMissed={() => onSelectItems([])}
+      onContextMenu={(event) => event.preventDefault()}
     >
-      <SceneContent {...props} />
+      <SceneContent
+        data={data}
+        layout={layout}
+        showEmpty={showEmpty}
+        statusFilter={statusFilter}
+        selectedItems={selectedItems}
+        onSelectItems={onSelectItems}
+        searchQuery={searchQuery}
+        vizMode={vizMode}
+        shadowQuality={shadowQuality}
+        onContextMenu={onContextMenu}
+        cameraCommand={cameraCommand}
+        cameraCommandId={cameraCommandId}
+        initialCameraView={initialCameraView}
+        initialTarget={cameraView.target}
+        onCameraChange={onCameraChange}
+        onFirstFrame={onFirstFrame}
+        themeConfig={themeConfig}
+        showPerfOverlay={showPerfOverlay}
+      />
     </Canvas>
   )
 }

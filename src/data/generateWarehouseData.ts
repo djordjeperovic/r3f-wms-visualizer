@@ -1,13 +1,4 @@
-import type { WarehouseItem } from '../types/warehouse'
-
-const ROWS = 10
-const COLS = 11
-const LEVELS = 5
-
-const ROW_SPACING = 4
-const COL_SPACING = 2
-const LEVEL_HEIGHT = 1.5
-const LEVEL_OFFSET = 0.75
+import { DEFAULT_LAYOUT, type WarehouseItem, type WarehouseLayout } from '../types/warehouse'
 
 function generateSku(): string {
   const prefix = String.fromCharCode(65 + Math.floor(Math.random() * 26))
@@ -15,19 +6,20 @@ function generateSku(): string {
   return `${prefix}-${number}`
 }
 
-export function generateWarehouseData(): WarehouseItem[] {
+export function generateWarehouseData(layout: WarehouseLayout = DEFAULT_LAYOUT): WarehouseItem[] {
   const items: WarehouseItem[] = []
 
-  const rowCenterOffset = ((ROWS - 1) * ROW_SPACING) / 2
-  const colCenterOffset = ((COLS - 1) * COL_SPACING) / 2
+  const rowCenterOffset = ((layout.rows - 1) * layout.rowSpacing) / 2
+  const colCenterOffset = ((layout.cols - 1) * layout.colSpacing) / 2
+  const levelOffset = layout.levelHeight / 2
 
-  for (let row = 0; row < ROWS; row += 1) {
-    for (let col = 0; col < COLS; col += 1) {
-      for (let level = 0; level < LEVELS; level += 1) {
+  for (let row = 0; row < layout.rows; row += 1) {
+    for (let col = 0; col < layout.cols; col += 1) {
+      for (let level = 0; level < layout.levels; level += 1) {
         const isOccupied = Math.random() > 0.3
-        const x = col * COL_SPACING - colCenterOffset
-        const y = level * LEVEL_HEIGHT + LEVEL_OFFSET
-        const z = row * ROW_SPACING - rowCenterOffset
+        const x = col * layout.colSpacing - colCenterOffset
+        const y = level * layout.levelHeight + levelOffset
+        const z = row * layout.rowSpacing - rowCenterOffset
 
         items.push({
           id: `R${row + 1}-C${col + 1}-L${level + 1}`,
