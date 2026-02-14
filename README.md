@@ -1,7 +1,7 @@
 # r3f-wms-visualizer
 
-Interactive 3D warehouse management visualization built with React, TypeScript, and react-three-fiber.
-The app renders warehouse locations as instanced boxes and lets you inspect per-location details directly in the scene.
+Interactive 3D warehouse visualization built with React, TypeScript, and react-three-fiber.
+The app renders a synthetic rack layout and lets you inspect slot state in a HUD overlay.
 
 ## Live app
 
@@ -10,10 +10,13 @@ The app renders warehouse locations as instanced boxes and lets you inspect per-
 ## Features
 
 - 550 generated locations (`10 rows x 11 columns x 5 levels`)
-- Occupied vs empty visualization with distinct materials and colors
-- Instanced mesh rendering for efficient scene performance
-- Hover highlight and click-to-toggle location details
-- Orbit camera controls for navigating the warehouse layout
+- Occupied vs empty slot rendering with separate instanced meshes
+- Empty-slot visibility toggle (`Show Empty Slots`)
+- Hover highlight + click-to-select interactions
+- Selection details panel in the overlay (`ID`)
+- Reset camera action that restores the warehouse-focused default view
+- Orbit controls (rotate/pan/zoom)
+- Scene postprocessing with SSAO + Bloom
 
 ## Tech stack
 
@@ -56,15 +59,18 @@ Then open `http://localhost:5173`.
 
 - Drag in the canvas to orbit the camera
 - Scroll to zoom in/out
-- Click a location to open details (ID, status, SKU when occupied)
-- Click the same location again or close (`X`) in the tooltip to dismiss
+- Right mouse drag to pan
+- Click a location to toggle selection
+- Click the selected location again to clear selection
+- Use `Show Empty Slots` to hide/show empty locations
+- Use `Reset Camera` to restore the default camera framing
 
 ## Project structure
 
 - `src/App.tsx`: App shell and legend overlay
-- `src/components/Scene.tsx`: Canvas, lighting, floor, camera controls
+- `src/components/Scene.tsx`: Canvas, lighting, floor/grid, orbit controls, postprocessing
+- `src/components/Overlay.tsx`: Top-left controls/legend + selection panel + reset camera button
 - `src/components/WarehouseInstances.tsx`: Instanced meshes, hover/click interactions, selection state
-- `src/components/LocationTooltip.tsx`: In-scene HTML tooltip
 - `src/hooks/useWarehouseData.ts`: Memoized data generation + partitioning
 - `src/data/generateWarehouseData.ts`: Synthetic warehouse grid and occupancy/SKU generation
 - `src/types/warehouse.ts`: Shared data contracts
@@ -73,8 +79,9 @@ Then open `http://localhost:5173`.
 
 1. `generateWarehouseData()` creates the warehouse location list and occupancy data.
 2. `useWarehouseData()` memoizes that list and splits it into `occupied` and `empty`.
-3. `WarehouseInstances` renders two `THREE.InstancedMesh` groups and wires pointer interactions.
-4. Selected locations are shown via `LocationTooltip` anchored in 3D space.
+3. `Scene` sets up environment lighting, ground grid/shadows, orbit controls, and postprocessing.
+4. `WarehouseInstances` renders occupied + empty instanced meshes and handles selection/hover coloring.
+5. `Overlay` exposes UI controls and shows selected slot information.
 
 ## Quality checks
 

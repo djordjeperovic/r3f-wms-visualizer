@@ -16,7 +16,8 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 !.vscode/mcp.json
-.claude/
+.playwright-cli/
+.playwrigt-cli/
 .idea
 .DS_Store
 *.suo
